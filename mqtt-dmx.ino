@@ -20,6 +20,8 @@
 #endif
 
 #define MAX(x,y) ((x) > (y) ? (x) : (y))
+#define MIN(x,y) ((x) < (y) ? (x) : (y))
+#define CLAMP(x,a,b) (MIN(MAX((x),(a)),(b)))
 
 #define HOSTNAME     "spotpole"
 #define MQTT_PREFIX  "hasi/lights/spot/"
@@ -32,6 +34,11 @@ char* broker     = MQTT_SERVER;
 char* clientname = HOSTNAME;
 int   port       = 1883;
 
+uint32_t fade_duration = 5000;
+uint32_t fade_start    = 0;
+
+byte  last_state[512] = { 0 };
+byte  next_state[512] = { 0 };
 
 uint8_t
 parse_hexdigit (const char digit)
@@ -200,6 +207,45 @@ parse_dmx_string (const char   *parsedata,
 
 
 void
+start_fade (void)
+{
+  memcpy (last_state, dmxN.getChans (), 512);
+
+  fade_start = millis ();
+  if (fade_start == 0)
+    fade_start = 1;
+}
+
+void
+calc_fade (byte     *target,
+           uint32_t  ms)
+{
+  static int last_factor = 0;
+  int i;
+  byte factor;
+
+  factor = (ms * 255 + fade_duration / 2) / fade_duration;
+
+  for (i = 0; i < 512; i++)
+    {
+      uint32_t val;
+
+      val = (factor * next_state[i] + (256 - factor) * last_state[i]) >> 8;
+      target[i] = CLAMP (val, 0, 255);
+    }
+}
+
+
+void
+finish_fade (void)
+{
+  memcpy (dmxN.getChans (), next_state, 512);
+  memcpy (last_state, next_state, 512);
+  fade_start = 0;
+}
+
+
+void
 handle_request (char *topic, byte *payload, unsigned int len)
 {
   char *payload_c = (char *) payload;
@@ -216,20 +262,19 @@ handle_request (char *topic, byte *payload, unsigned int len)
       subtopic[7] >= '0' && subtopic[7] <= '3' &&
       parse_color (payload_c, len, rgb) == true)
     {
-      ch_offset = (subtopic[7] - '0') * 3 + 1;
-      dmxN.setChans (rgb, 3, ch_offset);
+      ch_offset = (subtopic[7] - '0') * 3;
+      memcpy (next_state + ch_offset, rgb, 3);
+      start_fade ();
     }
   else if (strcmp (subtopic, "dmx_raw") == 0)
     {
-      dmxN.setChans (payload, MAX (len, 512), 1);
+      memcpy (next_state, payload, MAX (len, 512));
+      start_fade ();
     }
   else if (strcmp (subtopic, "dmx") == 0)
     {
-      byte *dmxdata;
-
-      dmxdata = dmxN.getChans ();
-      
-      parse_dmx_string (payload_c, len, dmxdata);
+      parse_dmx_string (payload_c, len, next_state);
+      start_fade ();
     }
 }
 
@@ -260,4 +305,14 @@ loop ()
 {
   ArduinoOTA.handle ();
   Espanol.loop ();
+
+  if (fade_start != 0)
+    {
+      uint32_t now = millis ();
+
+      if (fade_start + fade_duration < now)
+        finish_fade ();
+      else
+        calc_fade (dmxN.getChans (), now - fade_start);
+    }
 }
