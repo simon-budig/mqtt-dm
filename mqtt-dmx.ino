@@ -24,7 +24,7 @@
 #define HOSTNAME     "spotpole"
 #define MQTT_PREFIX  "hasi/lights/spot/"
 
-#define dmxX dmxA
+#define dmxN dmxB
 
 char* ssid       = MQTT_NET_ESSID;
 char* password   = MQTT_NET_PASSWORD;
@@ -217,20 +217,19 @@ handle_request (char *topic, byte *payload, unsigned int len)
       parse_color (payload_c, len, rgb) == true)
     {
       ch_offset = (subtopic[7] - '0') * 3 + 1;
-      dmxX.setChans (rgb, 3, ch_offset);
+      dmxN.setChans (rgb, 3, ch_offset);
     }
   else if (strcmp (subtopic, "dmx_raw") == 0)
     {
-      dmxX.setChans (payload, MAX (len, 512), 1);
+      dmxN.setChans (payload, MAX (len, 512), 1);
     }
   else if (strcmp (subtopic, "dmx") == 0)
     {
       byte *dmxdata;
 
-      dmxdata = dmxX.getChans ();
+      dmxdata = dmxN.getChans ();
       
       parse_dmx_string (payload_c, len, dmxdata);
-      dmxX.setChans (dmxdata);
     }
 }
 
@@ -240,10 +239,10 @@ setup ()
 {
   byte zero = 0;
   
-  // Start dmxX, status LED on pin 12 with full intensity
-  dmxX.begin (12);
-  dmxX.clearChans ();
-  dmxX.setChans (&zero, 1, 12);
+  // Start dmxN, status LED on pin 12 with full intensity
+  dmxN.begin (12);
+  dmxN.clearChans ();
+  dmxN.setChans (&zero, 1, 12);
 
   Espanol.begin (ssid, password, clientname, broker, port);
 
