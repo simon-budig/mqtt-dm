@@ -91,6 +91,47 @@ parse_color (const char   *parsedata,
 }
 
 
+bool
+parse_float (const char   *parsedata,
+             unsigned int  len,
+             float        *target)
+{
+  int i, post_dot = -1;
+  
+  *target = 0.0;
+
+  for (i = 0; i < len; i++)
+    {
+      char c = parsedata[i];
+      
+      if (c == '.')
+        {
+          if (post_dot >= 0)
+            return false;
+          post_dot = 0;
+        }
+      else if (c >= '0' && c <= '9')
+        {
+          *target = *target * 10 + (c - '0');
+          if (post_dot >= 0)
+            post_dot += 1;
+        }
+      else
+        {
+          return false;
+        }
+    }
+
+  while (post_dot > 0)
+    {
+      *target = *target / 10.0;
+      post_dot -= 1;
+    }
+
+  return true;
+}
+
+
 void
 parse_dmx_string (const char   *parsedata,
                   unsigned int  len,
@@ -216,6 +257,7 @@ start_fade (void)
     fade_start = 1;
 }
 
+
 void
 calc_fade (byte     *target,
            uint32_t  ms)
@@ -224,7 +266,7 @@ calc_fade (byte     *target,
   int i;
   byte factor;
 
-  factor = (ms * 255 + fade_duration / 2) / fade_duration;
+  factor = (ms * 255 + fade_duration / 2) / (fade_duration + 1);
 
   for (i = 0; i < 512; i++)
     {
@@ -275,6 +317,15 @@ handle_request (char *topic, byte *payload, unsigned int len)
     {
       parse_dmx_string (payload_c, len, next_state);
       start_fade ();
+    }
+  else if (strcmp (subtopic, "fade-time") == 0)
+    {
+      float new_fade_duration;
+      if (parse_float (payload_c, len, &new_fade_duration))
+        {
+          fade_duration = (uint32_t) (new_fade_duration * 1000.0 + 0.5);
+          start_fade ();
+        }
     }
 }
 
